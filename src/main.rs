@@ -6,13 +6,14 @@ use std::io::{self, Write};
 
 #[derive(Debug)]
 struct Chapter {
-    title: String,
+    name: String,
     link: String,
 }
 
 #[derive(Debug)]
 struct Novel {
     // novelid: String,
+    title: String,
     link: String,
     chapters: Vec<Chapter>,
 }
@@ -20,7 +21,7 @@ struct Novel {
 impl Novel {
     fn new(novelid: &str) -> Result<Self, Box<dyn Error>> {
         let mut novel = Novel {
-            // novelid: novelid.to_string(),
+            title: novelid.to_string(),
             link: format!("http://www.jjwxc.net/onebook.php?novelid={}", novelid),
             chapters: Vec::new(),
         };
@@ -32,19 +33,29 @@ impl Novel {
         let re = regex::Regex::new(r#".*novelid=\d+&chapterid=(\d+)">(.*)</a>"#)?;
         for cap in re.captures_iter(&text) {
             let chapterid = cap.get(1).unwrap().as_str().to_string();
-            let title = cap.get(2).unwrap().as_str().to_string();
+            let name = cap.get(2).unwrap().as_str().to_string();
             novel.chapters.push(Chapter {
-                title: title,
-                link: format!(
-                    "http://www.jjwxc.net/onebook.php?novelid={}&chapterid={}",
-                    novelid, chapterid
-                ),
+                name: name,
+                link: format!("{}&chapterid={}", novel.link, chapterid),
             });
+        }
+
+        let re = regex::Regex::new(r"<title>(.*)</title>")?;
+        if let Some(cap) = re.captures(&text) {
+            novel.title = cap
+                .get(1)
+                .unwrap()
+                .as_str()
+                .to_string()
+                .split_once("_")
+                .unwrap()
+                .0
+                .to_string();
         }
         Ok(novel)
     }
 
-    fn download(&self, filepath: &str) -> Result<(), Box<dyn Error>> {
+    fn download(&self) -> Result<(), Box<dyn Error>> {
         let mut content = String::from("");
 
         for (index, &ref chapter) in self.chapters.iter().enumerate() {
@@ -55,10 +66,13 @@ impl Novel {
             let re =
                 regex::Regex::new(r#"(?s)<div style="clear:both;"></div>(.*?)<div id="#).unwrap();
 
-            for cap in re.captures_iter(&text) {
-                if let Some(matched) = cap.get(1) {
-                    content = format!("{}\n{}\n{}", content, chapter.title, matched.as_str());
-                }
+            if let Some(cap) = re.captures(&text) {
+                content = format!(
+                    "{}\n{}\n{}",
+                    content,
+                    chapter.name,
+                    cap.get(1).unwrap().as_str()
+                )
             }
 
             let progress = (index + 1) as f32 / self.chapters.len() as f32 * 100.0;
@@ -68,7 +82,8 @@ impl Novel {
 
         content = content.replace("<br>", "\n");
 
-        let filepath = std::path::Path::new(filepath);
+        let filename = format!("{}.txt", self.title);
+        let filepath = std::path::Path::new(&filename);
         if filepath.exists() {
             fs::remove_file(filepath)?;
         }
@@ -81,7 +96,7 @@ impl Novel {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let novel = Novel::new("7434574")?;
-    novel.download("novel.txt")
+    novel.download()
 }
 
 #[cfg(test)]
