@@ -12,7 +12,6 @@ struct Chapter {
 
 #[derive(Debug)]
 struct Novel {
-    // novelid: String,
     title: String,
     link: String,
     chapters: Vec<Chapter>,
